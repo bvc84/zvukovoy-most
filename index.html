@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Звуковой мост</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Макет: одна колонка-прибор. Сверху выбор канала и линейка частот, под ней пульт отправки и пульт приёма. */
+:root {
+  --bg: #EDF0F3;
+  --panel: #F9FAFB;
+  --ink: #15212C;
+  --muted: #586572;
+  --line: #CDD5DC;
+  --accent: #2440E6;
+  --signal: #E07B00;
+  --ok: #1D7F46;
+  --bad: #BE3328;
+  --bank-a: #DCE2E8;
+  --bank-b: #E5E9EE;
+  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --font-body: "Golos Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1620; --panel: #142030; --ink: #E4EBF2; --muted: #8B99A7; --line: #26374B;
+    --accent: #8197FF; --signal: #FFA733; --ok: #4CC27D; --bad: #FF6B5E;
+    --bank-a: #1A2838; --bank-b: #1F2F41;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1620; --panel: #142030; --ink: #E4EBF2; --muted: #8B99A7; --line: #26374B;
+  --accent: #8197FF; --signal: #FFA733; --ok: #4CC27D; --bad: #FF6B5E;
+  --bank-a: #1A2838; --bank-b: #1F2F41;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 16px/1.5 var(--font-body);
+  padding-inline: 16px;
+  padding-block: calc(24px + env(safe-area-inset-top, 0px)) calc(40px + env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 760px; margin: 0 auto; display: grid; gap: 28px; }
+
+header { display: grid; gap: 10px; }
+h1 {
+  font: 700 clamp(28px, 7vw, 44px)/1.05 var(--font-display);
+  letter-spacing: -0.01em; margin: 0; text-wrap: balance;
+}
+.lead { margin: 0; color: var(--muted); max-width: 60ch; }
+
+/* Линейка каналов */
+.band { display: grid; gap: 10px; }
+.strip {
+  display: grid; gap: 2px;
+  height: 132px; padding: 6px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel);
+}
+.ch { position: relative; border-radius: 2px; overflow: hidden; background: var(--bank-a); }
+.ch.b { background: var(--bank-b); }
+.ch.mark { background: transparent; outline: 1px dashed var(--line); outline-offset: -1px; }
+.ch i {
+  position: absolute; inset: 0; transform-origin: bottom; transform: scaleY(0);
+  background: var(--accent); opacity: .55;
+}
+.ch.hot i { background: var(--signal); opacity: 1; }
+.axis {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  font: 12px/1.4 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.axis b { color: var(--ink); font-weight: 600; }
+
+/* Пульты */
+.decks { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.deck {
+  min-width: 0; display: grid; gap: 14px; align-content: start;
+  padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+}
+.deck h2 {
+  margin: 0; font: 600 12px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+}
+.field { display: grid; gap: 6px; }
+label, .lbl { font-size: 14px; font-weight: 500; }
+textarea {
+  width: 100%; min-height: 96px; resize: vertical; padding: 10px 12px;
+  font: 16px/1.45 var(--font-body); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px;
+}
+.meta { font: 13px/1.4 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.meta.bad { color: var(--bad); }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.seg button {
+  border: 0; background: transparent; color: var(--ink); padding: 8px 4px; cursor: pointer;
+  font: 500 14px/1.2 var(--font-body); display: grid; gap: 2px;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button small { font: 11px/1 var(--font-mono); color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+.seg button[aria-pressed="true"] small { color: var(--panel); opacity: .85; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.btn {
+  appearance: none; border: 0; border-radius: 6px; padding: 13px 16px; cursor: pointer;
+  font: 600 16px/1 var(--font-body); background: var(--accent); color: var(--panel);
+}
+.btn.ghost { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.state { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); flex: none; }
+.state[data-s="listen"] .dot { background: var(--accent); }
+.state[data-s="rx"] .dot { background: var(--signal); animation: pulse .6s ease-in-out infinite alternate; }
+.state[data-s="ok"] .dot { background: var(--ok); }
+.state[data-s="bad"] .dot { background: var(--bad); }
+@keyframes pulse { to { opacity: .3; } }
+.note { margin: 0; font-size: 14px; color: var(--bad); }
+
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.log li { min-width: 0; padding: 10px 12px; border-radius: 6px; background: var(--bg); border-left: 3px solid var(--ok); }
+.log li.bad { border-left-color: var(--bad); }
+.log p { margin: 0 0 4px; overflow-wrap: anywhere; }
+.empty { margin: 0; font-size: 14px; color: var(--muted); }
+
+.how { display: grid; gap: 10px; }
+.how h2 { margin: 0; font: 600 18px/1.3 var(--font-body); }
+.how h3 { margin: 8px 0 0; font: 600 15px/1.3 var(--font-body); }
+.how ol { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 65ch; }
+
+@media (prefers-reduced-motion: reduce) { .state[data-s="rx"] .dot { animation: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Звуковой мост</h1>
+    <p class="lead">Передаёт текст звуком: напрямую между устройствами рядом или через обычный телефонный звонок, когда мобильный интернет отключён.</p>
+  </header>
+
+  <section class="band" aria-label="Канал и частоты">
+    <div class="seg" role="group" aria-label="Канал" id="mode">
+      <button type="button" data-m="near" aria-pressed="true">Рядом<small>1,6–4,9 кГц</small></button>
+      <button type="button" data-m="phone" aria-pressed="false">Через звонок<small>0,5–2,5 кГц</small></button>
+    </div>
+    <div class="strip" id="strip"></div>
+    <div class="axis" id="axis"></div>
+  </section>
+
+  <div class="decks">
+    <section class="deck" aria-labelledby="tx-h">
+      <h2 id="tx-h">Отправить</h2>
+      <div class="field">
+        <label for="msg">Сообщение</label>
+        <textarea id="msg">Привет из новой сети!</textarea>
+        <div class="meta" id="msg-meta"></div>
+      </div>
+      <div class="field">
+        <span class="lbl" id="speed-l">Скорость</span>
+        <div class="seg" role="group" aria-labelledby="speed-l" id="speed">
+          <button type="button" data-t="0.12" aria-pressed="false">Медленно<small></small></button>
+          <button type="button" data-t="0.08" aria-pressed="true">Обычно<small></small></button>
+          <button type="button" data-t="0.05" aria-pressed="false">Быстро<small></small></button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="vol">Громкость</label>
+        <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
+      </div>
+      <button class="btn" id="send" type="button">Отправить звуком</button>
+    </section>
+
+    <section class="deck" aria-labelledby="rx-h">
+      <h2 id="rx-h">Принять</h2>
+      <div class="state" id="rx-state" data-s="off"><span class="dot"></span><span id="rx-text">Микрофон выключен</span></div>
+      <p class="note" id="rx-note" hidden></p>
+      <button class="btn ghost" id="listen" type="button">Слушать микрофоном</button>
+      <div class="field">
+        <span class="lbl">Принятые сообщения</span>
+        <ul class="log" id="log"></ul>
+        <p class="empty" id="log-empty">Пока ничего. Приёмник слушает оба канала сразу: включи микрофон здесь и отправь сообщение с другого устройства.</p>
+      </div>
+    </section>
+  </div>
+
+  <section class="how">
+    <h2>Как проверить</h2>
+    <h3>Рядом</h3>
+    <ol>
+      <li>Открой эту страницу на двух устройствах.</li>
+      <li>На одном нажми «Слушать микрофоном», на другом выбери «Рядом» и «Отправить звуком».</li>
+      <li>Начни с полуметра. Если пришло с ошибками, поставь ближе или прибавь громкость.</li>
+    </ol>
+    <h3>Через звонок</h3>
+    <ol>
+      <li>Позвони со своего телефона на второй. Второй телефон положи рядом с компьютером и включи на нём громкую связь.</li>
+      <li>Открой страницу на компьютере, надень на него наушники и приложи один наушник к микрофону своего телефона, внизу корпуса.</li>
+      <li>Нажми «Слушать микрофоном», выбери «Через звонок» и «Отправить звуком». Звук пойдёт из наушника в звонок, придёт на второй телефон, и его услышит микрофон компьютера.</li>
+      <li>Для контроля выключи громкую связь и отправь ещё раз. Если сообщение не пришло, значит, в первый раз оно действительно прошло через сотовую сеть.</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+/*MODEM:BEGIN*/
+const Modem = (() => {
+  // Тон 0 — начало сообщения, тон 1 — конец, остальные несут данные.
+  // Соседние символы всегда в разных «банках» (чётные и нечётные тоны),
+  // поэтому приёмнику не нужны часы: смена тона = новый символ.
+  // near — для устройств рядом, phone — укладывается в полосу телефонного звонка (300–3400 Гц).
+  const START = 0, END = 1, MAX_BYTES = 160;
+  const PROFILES = {
+    near: { id: 'near', f0: 1600, df: 100, bits: 4 },
+    phone: { id: 'phone', f0: 500, df: 120, bits: 3 },
+  };
+  for (const p of Object.values(PROFILES)) p.nt = 2 + 2 * (1 << p.bits);
+  const freq = (p, i) => p.f0 + i * p.df;
+
+  function crc8(bytes) {
+    let c = 0;
+    for (const b of bytes) {
+      c ^= b;
+      for (let k = 0; k < 8; k++) c = c & 0x80 ? ((c << 1) ^ 0x07) & 0xff : (c << 1) & 0xff;
+    }
+    return c;
+  }
+
+  // Байты -> группы по bits бит (старшие биты первыми)
+  function pack(bytes, bits) {
+    const vals = [], mask = (1 << bits) - 1;
+    let acc = 0, n = 0;
+    for (const b of bytes) {
+      acc = (acc << 8) | b; n += 8;
+      while (n >= bits) { n -= bits; vals.push((acc >> n) & mask); }
+      acc &= (1 << n) - 1;
+    }
+    if (n > 0) vals.push((acc << (bits - n)) & mask);
+    return vals;
+  }
+
+  function unpack(vals, bits) {
+    const out = [];
+    let acc = 0, n = 0;
+    for (const v of vals) {
+      acc = (acc << bits) | v; n += bits;
+      if (n >= 8) { n -= 8; out.push((acc >> n) & 255); acc &= (1 << n) - 1; }
+    }
+    return out;
+  }
+
+  function encode(text, p) {
+    const data = Array.from(new TextEncoder().encode(text));
+    const vals = pack(data.concat(crc8(data)), p.bits);
+    return { bytes: data.length, tones: vals.map((v, i) => 2 + v * 2 + (i & 1)) };
+  }
+
+  function schedule(tones, symbolSec) {
+    const seq = [{ tone: START, dur: 0.32 }];
+    tones.forEach(t => seq.push({ tone: t, dur: symbolSec }));
+    seq.push({ tone: END, dur: 0.24 });
+    return seq;
+  }
+
+  function synth(seq, sr, amp, p) {
+    const ramp = Math.round(sr * 0.005);
+    const lens = seq.map(s => Math.round(s.dur * sr));
+    const out = new Float32Array(lens.reduce((a, b) => a + b, 0));
+    let pos = 0;
+    seq.forEach((s, k) => {
+      const n = lens[k], w = 2 * Math.PI * freq(p, s.tone) / sr;
+      for (let j = 0; j < n; j++) {
+        let g = 1;
+        if (j < ramp) g = 0.5 - 0.5 * Math.cos(Math.PI * j / ramp);
+        else if (j > n - ramp) g = 0.5 - 0.5 * Math.cos(Math.PI * (n - j) / ramp);
+        out[pos + j] = amp * g * Math.sin(w * j);
+      }
+      pos += n;
+    });
+    return out;
+  }
+
+  function createDecoder(sr, p, onEvent) {
+    const NT = p.nt;
+    const N = Math.round(sr * 0.024), H = Math.round(sr * 0.012), hop = H / sr;
+    const win = new Float32Array(N), coef = new Float32Array(NT), power = new Float32Array(NT);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
+    for (let t = 0; t < NT; t++) coef[t] = 2 * Math.cos(2 * Math.PI * freq(p, t) / sr);
+    const floor = Math.pow(0.0003 * N / 4, 2);
+    const minStart = Math.round(0.14 / hop), minData = 2, minEnd = Math.round(0.06 / hop);
+    const maxGap = Math.round(0.5 / hop), armTimeout = Math.round(1.2 / hop);
+    const maxSyms = Math.ceil((MAX_BYTES + 1) * 8 / p.bits) + 4;
+    const buf = new Float32Array(N * 8), frame = new Float32Array(N), sorted = new Float32Array(NT);
+    const HOLD = -2; // предыдущий тон ещё звучит
+    const R = Math.round(0.15 / hop), hist = new Float32Array(NT * R); // уровни тонов за последние 0,15 с
+    let len = 0, loudest = -1, frameNo = 0;
+    let state, run, glitch, cand, candN, last, peak, syms, gap, armed;
+
+    function reset() {
+      state = 'idle'; run = 0; glitch = 0; cand = -1; candN = 0; last = -1; peak = 0; syms = []; gap = 0; armed = 0;
+    }
+    reset();
+
+    function analyze() {
+      let g = 0;
+      for (let t = 0; t < NT; t++) {
+        const c = coef[t];
+        let s1 = 0, s2 = 0;
+        for (let i = 0; i < N; i++) { const s0 = frame[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+        power[t] = sorted[t] = s1 * s1 + s2 * s2 - c * s1 * s2;
+        if (power[t] > power[g]) g = t;
+      }
+      sorted.sort();
+      const med = sorted[NT >> 1], top = sorted[NT - 1];
+      loudest = top > floor && top > med * 30 ? g : -1;
+      if (state === 'idle') return loudest >= 0 && top > sorted[NT - 2] * 2 ? g : -1;
+
+      // Следующий тон всегда из другого банка, чем предыдущий, либо это тон конца.
+      const bank = syms.length & 1;
+      let best = -1, bp = 0, second = 0;
+      for (let t = 0; t < NT; t++) {
+        if (t !== END && (t < 2 || ((t - 2) & 1) !== bank)) continue;
+        const pw = power[t];
+        if (pw > bp) { second = bp; bp = pw; best = t; } else if (pw > second) second = pw;
+      }
+      // Новый символ засчитываем, только когда передатчик переключился: предыдущий тон затих
+      // или новый уже вдвое громче него. Так эхо комнаты не принимается за новый символ.
+      const lp = power[last];
+      if (lp > peak) peak = lp;
+      if (lp > peak * 0.35 && !(bp > lp * 2)) return HOLD;
+      return bp > floor && bp > med * 30 && bp > second * 1.5 && bp > top * 0.05 ? best : -1;
+    }
+
+    function finish() {
+      let errors = 0;
+      const vals = syms.map((s, i) => { if (((s - 2) & 1) !== (i & 1)) errors++; return (s - 2) >> 1; });
+      const bytes = unpack(vals, p.bits);
+      const data = bytes.slice(0, -1);
+      const ok = errors === 0 && bytes.length > 0 && crc8(data) === bytes[bytes.length - 1];
+      const text = new TextDecoder().decode(new Uint8Array(data));
+      onEvent({ type: 'done', ok, text, bytes: data.length, symbols: syms.length, profile: p.id });
+      reset();
+    }
+
+    function onLabel(l) {
+      if (state === 'idle') {
+        if (l === START) {
+          run++; glitch = 0;
+          if (run >= minStart) {
+            state = 'armed'; armed = 0; last = START; peak = power[START];
+            onEvent({ type: 'sync', profile: p.id });
+          }
+        } else if (run > 0 && glitch < 2) glitch++;
+        else { run = 0; glitch = 0; }
+        return;
+      }
+      if (l === HOLD) { gap = 0; armed = 0; return; }
+      if (state === 'armed') {
+        if (l === -1) { if (++armed > armTimeout) { onEvent({ type: 'lost', symbols: 0, profile: p.id }); reset(); } return; }
+        state = 'data'; gap = 0;
+      }
+      if (l === -1) {
+        if (++gap > maxGap) { onEvent({ type: 'lost', symbols: syms.length, profile: p.id }); reset(); }
+        return;
+      }
+      gap = 0;
+      if (l === cand) candN++; else { cand = l; candN = 1; }
+      if (cand === END) { if (candN === minEnd) finish(); return; }
+      if (candN === minData) {
+        // Новый тон нарастает, а отзвук старого только затихает: сравниваем с минимумом за 0,15 с
+        let low = Infinity;
+        for (let k = 1; k < R; k++) low = Math.min(low, hist[cand * R + (frameNo - k + R) % R]);
+        if (power[cand] < low * 2.5) return;
+        syms.push(cand); last = cand; peak = power[cand]; cand = -1; candN = 0;
+        onEvent({ type: 'symbol', symbols: syms.length, profile: p.id });
+        if (syms.length > maxSyms) { onEvent({ type: 'lost', symbols: syms.length, profile: p.id }); reset(); }
+      }
+    }
+
+    function push(chunk) {
+      let off = 0;
+      while (off < chunk.length) {
+        const take = Math.min(chunk.length - off, buf.length - len);
+        buf.set(chunk.subarray(off, off + take), len);
+        len += take; off += take;
+        while (len >= N) {
+          for (let i = 0; i < N; i++) frame[i] = buf[i] * win[i];
+          onLabel(analyze());
+          for (let t = 0; t < NT; t++) hist[t * R + frameNo % R] = power[t];
+          frameNo++;
+          buf.copyWithin(0, H, len); len -= H;
+        }
+      }
+    }
+
+    // Уровень канала в дБ относительно полной шкалы
+    function levelDb(t) { return 20 * Math.log10(4 * Math.sqrt(power[t]) / N + 1e-9); }
+
+    return { push, reset, levelDb, get label() { return loudest; }, get busy() { return state !== 'idle'; } };
+  }
+
+  return { START, END, MAX_BYTES, PROFILES, freq, crc8, pack, unpack, encode, schedule, synth, createDecoder };
+})();
+/*MODEM:END*/
+
+// ---------- Интерфейс ----------
+const $ = id => document.getElementById(id);
+const MODE_NAMES = { near: 'рядом', phone: 'через звонок' };
+let mode = 'near';
+let bars = [];
+
+function buildStrip() {
+  const p = Modem.PROFILES[mode];
+  const strip = $('strip');
+  strip.textContent = '';
+  strip.style.gridTemplateColumns = `repeat(${p.nt}, minmax(0, 1fr))`;
+  bars = [];
+  for (let t = 0; t < p.nt; t++) {
+    const ch = document.createElement('div');
+    ch.className = 'ch' + (t < 2 ? ' mark' : (t % 2 ? ' b' : ''));
+    ch.title = Modem.freq(p, t) + ' Гц' + (t === 0 ? ' · начало' : t === 1 ? ' · конец' : '');
+    const i = document.createElement('i');
+    ch.appendChild(i);
+    strip.appendChild(ch);
+    bars.push({ ch, i });
+  }
+  const axis = $('axis');
+  axis.textContent = '';
+  const parts = [
+    [Modem.freq(p, 0) + ' Гц', ' начало · конец'],
+    [`${p.nt} тонов`, `, шаг ${p.df} Гц, ${p.bits} бита на тон`],
+    [Modem.freq(p, p.nt - 1) + ' Гц', ''],
+  ];
+  parts.forEach(([b, rest]) => {
+    const span = document.createElement('span');
+    const strong = document.createElement('b');
+    strong.textContent = b;
+    span.append(strong, rest);
+    axis.appendChild(span);
+  });
+  $('speed').querySelectorAll('button').forEach(b => {
+    b.querySelector('small').textContent = Math.round(p.bits / +b.dataset.t) + ' бит/с';
+  });
+}
+
+$('mode').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  mode = b.dataset.m;
+  $('mode').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  buildStrip();
+  updateMeta();
+});
+
+let ctx = null;
+function audio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+
+// --- Отправка ---
+let symbolSec = 0.08;
+let tx = null; // { src, t0, seq, mode }
+const fmt = n => n.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function updateMeta() {
+  const enc = Modem.encode($('msg').value, Modem.PROFILES[mode]);
+  const secs = 0.56 + enc.tones.length * symbolSec;
+  const meta = $('msg-meta');
+  if (enc.bytes > Modem.MAX_BYTES) {
+    meta.textContent = `Слишком длинно: ${enc.bytes} байт, максимум ${Modem.MAX_BYTES}. Русская буква занимает 2 байта.`;
+    meta.className = 'meta bad';
+    $('send').disabled = !tx;
+  } else {
+    meta.textContent = `${enc.bytes} байт · звучит ${fmt(secs)} с`;
+    meta.className = 'meta';
+    $('send').disabled = false;
+  }
+  return enc;
+}
+$('msg').addEventListener('input', updateMeta);
+$('speed').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  symbolSec = +b.dataset.t;
+  $('speed').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  updateMeta();
+});
+
+function stopTx() {
+  if (tx) { try { tx.src.stop(); } catch (e) {} }
+  tx = null;
+  $('send').textContent = 'Отправить звуком';
+  updateMeta();
+}
+$('send').addEventListener('click', () => {
+  if (tx) { stopTx(); return; }
+  const enc = updateMeta();
+  if (enc.bytes > Modem.MAX_BYTES || !enc.bytes) return;
+  const ac = audio();
+  const p = Modem.PROFILES[mode];
+  const seq = Modem.schedule(enc.tones, symbolSec);
+  const samples = Modem.synth(seq, ac.sampleRate, 0.85, p);
+  const lead = 0.15; // пауза, чтобы микрофон на той стороне успел выровнять усиление
+  const ab = ac.createBuffer(1, samples.length, ac.sampleRate);
+  ab.copyToChannel(samples, 0);
+  const src = ac.createBufferSource();
+  src.buffer = ab;
+  const g = ac.createGain();
+  g.gain.value = +$('vol').value;
+  src.connect(g).connect(ac.destination);
+  const t0 = ac.currentTime + lead;
+  src.start(t0);
+  src.onended = () => { if (tx && tx.src === src) stopTx(); };
+  tx = { src, t0, seq, mode };
+  $('send').textContent = 'Остановить';
+});
+
+function txTone() {
+  if (!tx || !ctx || tx.mode !== mode) return -1;
+  let t = ctx.currentTime - tx.t0;
+  if (t < 0) return -1;
+  for (const s of tx.seq) { if (t < s.dur) return s.tone; t -= s.dur; }
+  return -1;
+}
+
+// --- Приём: слушаем оба канала одновременно ---
+let rx = null; // { stream, node, srcNode, decs, wake }
+function setState(s, text) {
+  $('rx-state').dataset.s = s;
+  $('rx-text').textContent = text;
+}
+function note(text) {
+  $('rx-note').textContent = text || '';
+  $('rx-note').hidden = !text;
+}
+function addLog(ev) {
+  const li = document.createElement('li');
+  if (!ev.ok) li.className = 'bad';
+  const p = document.createElement('p');
+  p.textContent = ev.text || '(пусто)';
+  const m = document.createElement('div');
+  m.className = 'meta';
+  const tag = document.createElement('span');
+  tag.className = 'tag';
+  tag.textContent = MODE_NAMES[ev.profile];
+  const time = new Date().toLocaleTimeString('ru-RU');
+  m.append(`${time} · `, tag, ev.ok
+    ? ` · ${ev.bytes} байт · контрольная сумма сошлась`
+    : ' · контрольная сумма не сошлась, часть звука не расслышал');
+  li.append(p, m);
+  $('log').prepend(li);
+  $('log-empty').hidden = true;
+}
+
+function onRx(ev) {
+  if (ev.type === 'sync') setState('rx', `Поймал начало сообщения (${MODE_NAMES[ev.profile]})`);
+  else if (ev.type === 'symbol') setState('rx', `Принимаю: ${ev.symbols} тонов`);
+  else if (ev.type === 'lost') setState('bad', 'Сигнал оборвался. Слушаю дальше');
+  else if (ev.type === 'done') {
+    setState(ev.ok ? 'ok' : 'bad', ev.ok ? 'Принято. Слушаю дальше' : 'Пришло с ошибками. Слушаю дальше');
+    addLog(ev);
+  }
+}
+
+async function startRx() {
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    note('Микрофон работает только на защищённом адресе, который начинается с https://. Открой страницу по такой ссылке.');
+    return;
+  }
+  note('');
+  const ac = audio();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (e) {
+    note('Браузер не дал доступ к микрофону. Разреши микрофон для этого сайта в настройках браузера и нажми кнопку ещё раз.');
+    return;
+  }
+  const srcNode = ac.createMediaStreamSource(stream);
+  const node = ac.createScriptProcessor(4096, 1, 1);
+  const decs = {};
+  for (const id in Modem.PROFILES) decs[id] = Modem.createDecoder(ac.sampleRate, Modem.PROFILES[id], onRx);
+  node.onaudioprocess = e => {
+    const data = e.inputBuffer.getChannelData(0);
+    for (const id in decs) decs[id].push(data);
+  };
+  const mute = ac.createGain();
+  mute.gain.value = 0;
+  srcNode.connect(node); node.connect(mute); mute.connect(ac.destination);
+  let wake = null;
+  try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+  rx = { stream, node, srcNode, decs, wake };
+  setState('listen', 'Слушаю');
+  $('listen').textContent = 'Выключить микрофон';
+}
+function stopRx() {
+  if (!rx) return;
+  rx.stream.getTracks().forEach(t => t.stop());
+  rx.node.disconnect(); rx.srcNode.disconnect();
+  if (rx.wake) rx.wake.release().catch(() => {});
+  rx = null;
+  setState('off', 'Микрофон выключен');
+  $('listen').textContent = 'Слушать микрофоном';
+}
+$('listen').addEventListener('click', () => (rx ? stopRx() : startRx()));
+
+// --- Отрисовка линейки ---
+function draw() {
+  const tt = txTone();
+  const dec = rx ? rx.decs[mode] : null;
+  const rl = dec ? dec.label : -1;
+  for (let t = 0; t < bars.length; t++) {
+    let v = 0;
+    if (dec) v = Math.min(1, Math.max(0, (dec.levelDb(t) + 90) / 70));
+    if (t === tt) v = 1;
+    bars[t].i.style.transform = `scaleY(${v.toFixed(3)})`;
+    bars[t].ch.classList.toggle('hot', t === tt || t === rl);
+  }
+  requestAnimationFrame(draw);
+}
+buildStrip();
+updateMeta();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
